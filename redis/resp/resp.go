@@ -65,7 +65,7 @@ func NewMessage(b []byte) (*Message, error) {
 // 	resp.WriteArbitrary(w, []interface{}{bar, baz})
 //
 func NewSimpleString(s string) *Message {
-	b := append(make([]byte, 0, len(s) + 3), '+')
+	b := append(make([]byte, 0, len(s)+3), '+')
 	b = append(b, []byte(s)...)
 	b = append(b, '\r', '\n')
 	return &Message{
