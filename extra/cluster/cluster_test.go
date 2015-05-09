@@ -94,7 +94,7 @@ func TestCmd(t *T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "foo", s)
 
-	assert.Equal(t, 0, cluster.Misses)
+	assert.Equal(t, uint64(0), cluster.Misses)
 }
 
 func TestCmdMiss(t *T) {
@@ -114,7 +114,7 @@ func TestCmdMiss(t *T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "baz", s)
 
-	assert.Equal(t, 1, cluster.Misses)
+	assert.Equal(t, uint64(1), cluster.Misses)
 }
 
 // This one is kind of a toughy. We have to set a certain slot (which isn't
@@ -127,7 +127,7 @@ func TestCmdAsk(t *T) {
 	slot := CRC16([]byte(key)) % numSlots
 
 	assert.Nil(t, cluster.Cmd("DEL", key).Err)
-	assert.Equal(t, 0, cluster.Misses)
+	assert.Equal(t, uint64(0), cluster.Misses)
 
 	// the key "wat" originally belongs on 7000
 	_, src, err := cluster.getConn("", "127.0.0.1:7000")
@@ -155,12 +155,12 @@ func TestCmdAsk(t *T) {
 	// Start the "migration"
 	assert.Nil(t, dst.Cmd("CLUSTER", "SETSLOT", slot, "IMPORTING", srcID).Err)
 	assert.Nil(t, src.Cmd("CLUSTER", "SETSLOT", slot, "MIGRATING", dstID).Err)
-	assert.Equal(t, 0, cluster.Misses)
+	assert.Equal(t, uint64(0), cluster.Misses)
 
 	// Make sure we can still "get" the value, and that the redirect actually
 	// happened
 	assert.Equal(t, redis.NilReply, cluster.Cmd("GET", key).Type)
-	assert.Equal(t, 1, cluster.Misses)
+	assert.Equal(t, uint64(1), cluster.Misses)
 
 	// Bail on the migration TODO this doesn't totally bail for some reason
 	assert.Nil(t, dst.Cmd("CLUSTER", "SETSLOT", slot, "NODE", srcID).Err)
