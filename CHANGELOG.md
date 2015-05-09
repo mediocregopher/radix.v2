@@ -11,6 +11,11 @@
 
 * * *
 
+### 2015-5-09 Release v0.5.5
+
++ Major refactoring of encoding to be significantly faster and to incur fewer
+  memory allocations
+
 ### 2015-2-25 Release v0.5.4
 
 + Add Pattern field to SubRepy in extra/pubsub
