@@ -248,6 +248,14 @@ func (m *Message) Array() ([]*Message, error) {
 	return nil, badType
 }
 
+func writeBytesHelper(w io.Writer, b []byte, lastErr error) error {
+	if lastErr != nil {
+		return lastErr
+	}
+	_, err := w.Write(b)
+	return err
+}
+
 // WriteMessage takes in the given Message and writes its encoded form to the
 // given io.Writer
 func WriteMessage(w io.Writer, m *Message) error {
@@ -258,13 +266,13 @@ func WriteMessage(w io.Writer, m *Message) error {
 // WriteArbitrary takes in any primitive golang value, or Message, and writes
 // its encoded form to the given io.Writer, inferring types where appropriate.
 func WriteArbitrary(w io.Writer, m interface{}) error {
-	return write(w, m, false)
+	return write(w, m, false, false)
 }
 
 // WriteArbitraryAsString is similar to WriteArbitraryAsFlattenedString except
 // that it won't flatten any embedded arrays.
 func WriteArbitraryAsString(w io.Writer, m interface{}) error {
-	return write(w, m, true)
+	return write(w, m, true, false)
 }
 
 // WriteArbitraryAsFlattenedStrings is similar to WriteArbitrary except that it
@@ -277,19 +285,19 @@ func WriteArbitraryAsString(w io.Writer, m interface{}) error {
 // Note that if a Message type is found it will *not* be encoded to a BulkStr,
 // but will simply be passed through as whatever type it already represents.
 func WriteArbitraryAsFlattenedStrings(w io.Writer, m interface{}) error {
-	fm := flatten(m)
-	return WriteArbitraryAsString(w, fm)
-}
-
-func writeBytesHelper(w io.Writer, b []byte, lastErr error) error {
-	if lastErr != nil {
-		return lastErr
+	fl := flattenedLength(m)
+	var err error
+	err = writeBytesHelper(w, []byte("*"), err)
+	err = writeBytesHelper(w, []byte(strconv.Itoa(fl)), err)
+	err = writeBytesHelper(w, []byte("\r\n"), err)
+	if err != nil {
+		return err
 	}
-	_, err := w.Write(b)
-	return err
+
+	return write(w, m, true, true)
 }
 
-func write(w io.Writer, m interface{}, forceString bool) error {
+func write(w io.Writer, m interface{}, forceString, flattened bool) error {
 	switch mt := m.(type) {
 	case []byte:
 		return writeStr(w, mt)
@@ -340,6 +348,10 @@ func write(w io.Writer, m interface{}, forceString bool) error {
 			return writeErr(w, mt)
 		}
 
+	// For the following cases, where we are writing an array, we only write the
+	// array header (a new array) if flattened is false, otherwise we just write
+	// each element inline and assume the array header has already been written
+
 	// We duplicate the below code here a bit, since this is the common case and
 	// it'd be better to not get the reflect package involved here
 	case []interface{}:
@@ -347,15 +359,18 @@ func write(w io.Writer, m interface{}, forceString bool) error {
 		lstr := strconv.Itoa(l)
 
 		var err error
-		err = writeBytesHelper(w, []byte("*"), err)
-		err = writeBytesHelper(w, []byte(lstr), err)
-		err = writeBytesHelper(w, []byte("\r\n"), err)
-		if err != nil {
-			return err
+
+		if !flattened {
+			err = writeBytesHelper(w, []byte("*"), err)
+			err = writeBytesHelper(w, []byte(lstr), err)
+			err = writeBytesHelper(w, []byte("\r\n"), err)
+			if err != nil {
+				return err
+			}
 		}
 
 		for i := 0; i < l; i++ {
-			if err = write(w, mt[i], forceString); err != nil {
+			if err = write(w, mt[i], forceString, flattened); err != nil {
 				return err
 			}
 		}
@@ -374,16 +389,19 @@ func write(w io.Writer, m interface{}, forceString bool) error {
 			lstr := strconv.Itoa(l)
 
 			var err error
-			err = writeBytesHelper(w, []byte("*"), err)
-			err = writeBytesHelper(w, []byte(lstr), err)
-			err = writeBytesHelper(w, []byte("\r\n"), err)
-			if err != nil {
-				return err
+
+			if !flattened {
+				err = writeBytesHelper(w, []byte("*"), err)
+				err = writeBytesHelper(w, []byte(lstr), err)
+				err = writeBytesHelper(w, []byte("\r\n"), err)
+				if err != nil {
+					return err
+				}
 			}
 
 			for i := 0; i < l; i++ {
 				vv := rm.Index(i).Interface()
-				if err = write(w, vv, forceString); err != nil {
+				if err = write(w, vv, forceString, flattened); err != nil {
 					return err
 				}
 			}
@@ -395,21 +413,24 @@ func write(w io.Writer, m interface{}, forceString bool) error {
 			lstr := strconv.Itoa(l)
 
 			var err error
-			err = writeBytesHelper(w, []byte("*"), err)
-			err = writeBytesHelper(w, []byte(lstr), err)
-			err = writeBytesHelper(w, []byte("\r\n"), err)
-			if err != nil {
-				return err
+
+			if !flattened {
+				err = writeBytesHelper(w, []byte("*"), err)
+				err = writeBytesHelper(w, []byte(lstr), err)
+				err = writeBytesHelper(w, []byte("\r\n"), err)
+				if err != nil {
+					return err
+				}
 			}
 
 			keys := rm.MapKeys()
 			for _, k := range keys {
 				kv := k.Interface()
 				vv := rm.MapIndex(k).Interface()
-				if err = write(w, kv, forceString); err != nil {
+				if err = write(w, kv, forceString, flattened); err != nil {
 					return err
 				}
-				if err = write(w, vv, forceString); err != nil {
+				if err = write(w, vv, forceString, flattened); err != nil {
 					return err
 				}
 			}
@@ -423,40 +444,39 @@ func write(w io.Writer, m interface{}, forceString bool) error {
 
 var typeOfBytes = reflect.TypeOf([]byte(nil))
 
-func flatten(m interface{}) []interface{} {
+func flattenedLength(m interface{}) int {
 	t := reflect.TypeOf(m)
 
 	// If it's a byte-slice we don't want to flatten
 	if t == typeOfBytes {
-		return []interface{}{m}
+		return 1
 	}
+
+	total := 0
 
 	switch t.Kind() {
 	case reflect.Slice:
 		rm := reflect.ValueOf(m)
 		l := rm.Len()
-		ret := make([]interface{}, 0, l)
 		for i := 0; i < l; i++ {
-			ret = append(ret, flatten(rm.Index(i).Interface())...)
+			total += flattenedLength(rm.Index(i).Interface())
 		}
-		return ret
 
 	case reflect.Map:
 		rm := reflect.ValueOf(m)
-		l := rm.Len() * 2
 		keys := rm.MapKeys()
-		ret := make([]interface{}, 0, l)
 		for _, k := range keys {
 			kv := k.Interface()
 			vv := rm.MapIndex(k).Interface()
-			ret = append(ret, flatten(kv)...)
-			ret = append(ret, flatten(vv)...)
+			total += flattenedLength(kv)
+			total += flattenedLength(vv)
 		}
-		return ret
 
 	default:
-		return []interface{}{m}
+		total++
 	}
+
+	return total
 }
 
 func writeStr(w io.Writer, b []byte) error {
