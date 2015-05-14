@@ -1,56 +1,89 @@
 # Radix
 
-Radix is a minimalistic Redis client for Go. It is broken up into the following:
+[![Join the chat at https://gitter.im/mediocregopher/radix.v2](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/mediocregopher/radix.v2?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-* [redis](http://godoc.org/github.com/fzzy/radix/redis) - A wrapper around a
-  single redis connection. Supports normal commands/response as well as
+[![GoDoc](https://godoc.org/github.com/mediocregopher/radix.v2?status.svg)](https://godoc.org/github.com/mediocregopher/radix.v2)
+
+Radix is a minimalistic [Redis][redis] client for Go. It is broken up into
+small, single-purpose packages for ease of use.
+
+* [redis](http://godoc.org/github.com/mediocregopher/radix.v2/redis) - A wrapper
+  around a single redis connection. Supports normal commands/response as well as
   pipelining.
 
-    * [resp](http://godoc.org/github.com/fzzy/radix/redis/resp) - A utility
-      package for encoding and decoding messages from redis
+* [pool](http://godoc.org/github.com/mediocregopher/radix.v2/pool) - a simple,
+  automatically expanding/cleaning connection pool.
 
-* extra - a sub-package containing added functionality
+* [pubsub](http://godoc.org/github.com/mediocregopher/radix.v2/pubsub) - a
+  simple wrapper providing convenient access to Redis Pub/Sub functionality.
 
-    * [pool](http://godoc.org/github.com/fzzy/radix/extra/pool) - a simple,
-      automatically expanding/cleaning connection pool.
+* [sentinel](http://godoc.org/github.com/mediocregopher/radix.v2/sentinel) - a
+  client for [redis sentinel][sentinel] which acts as a connection pool for a
+  cluster of redis nodes. A sentinel client connects to a sentinel instance and
+  any master redis instances that instance is monitoring. If a master becomes
+  unavailable, the sentinel client will automatically start distributing
+  connections from the slave chosen by the sentinel instance.
 
-    * [pubsub](http://godoc.org/github.com/fzzy/radix/extra/pubsub) - a simple
-      wrapper providing convenient access to Redis Pub/Sub functionality.
+* [cluster](http://godoc.org/github.com/mediocregopher/radix.v2/cluster) - a
+  client for a [redis cluster][cluster] which automatically handles interacting
+  with a redis cluster, transparently handling redirects and pooling. This
+  client keeps a mapping of slots to nodes internally, and automatically keeps
+  it up-to-date.
 
-    * [sentinel](http://godoc.org/github.com/fzzy/radix/extra/sentinel) - a
-      client for [redis sentinel][sentinel] which acts as a connection pool for
-      a cluster of redis nodes. A sentinel client connects to a sentinel
-      instance and any master redis instances that instance is monitoring. If a
-      master becomes unavailable, the sentinel client will automatically start
-      distributing connections from the slave chosen by the sentinel instance.
-
-    * [cluster](http://godoc.org/github.com/fzzy/radix/extra/cluster) - a client
-      for a [redis cluster][cluster] which automatically handles interacting
-      with a redis cluster, transparently handling redirects and pooling. This
-      client keeps a mapping of slots to nodes internally, and automatically
-      keeps it up-to-date.
+* [util](http://godoc.org/github.com/mediocregopher/radix.v2/util) - a
+  package containing a number of helper methods for doing common tasks with the
+  radix package, such as SCANing either a single redis instance or every one in
+  a cluster, or executing server-side lua
 
 ## Installation
 
-    go get github.com/fzzy/radix/redis
+    go get github.com/mediocregopher/radix.v2/...
 
 ## Testing
 
-    go get -u github.com/stretchr/testify
-    make test
+    go test github.com/mediocregopher/radix.v2/...
 
-The test action assumes you have a redis server listening on port 6379. It will
-adiitionally bring up and tear down redis cluster nodes on ports 7000 and 7001.
-You can specify the path to `redis-server` to use when setting up cluster like
-so:
+The test action assumes you have the following running:
 
-    make REDIS_SERVER=/path/to/redis-server test
+* A redis server listening on port 6379
+
+* A redis cluster node listening on port 7000, handling slots 0 through 8191
+
+* A redis cluster node listening on port 7001, handling slots 8192 through 16383
+
+The slot number are particularly important as the tests for the cluster package
+do some trickery which depends on certain keys being assigned to certain nodes
+
+## Why is this V2?
+
+V1 of radix was started by [fzzy](https://github.com/fzzy) and can be found
+[here](https://github.com/fzzy/radix). Some time in 2014 I took over the project
+and reached a point where I couldn't make improvements that I wanted to make due
+to past design decisions (mostly my own). So I've started V2, which has
+redesigned some core aspects of the api and hopefully made things easier to use
+and faster.
+
+Here are some of the major changes since V1:
+
+* Combining resp and redis packages
+
+* Reply is now Resp
+
+* Hash is now Map
+
+* Append is now PipeAppend, GetReply is now PipeResp
+
+* PipelineQueueEmptyError is now ErrPipelineEmpty
+
+* Significant changes to pool, making it easier to use
+
+* More functionality in cluster
 
 ## Copyright and licensing
 
-*Copyright 2013 Juhani Åhman*.
-Unless otherwise noted, the source files are distributed under the
-*MIT License* found in the LICENSE file.
+Unless otherwise noted, the source files are distributed under the *MIT License*
+found in the LICENSE.txt file.
 
+[redis]: http://redis.io
 [sentinel]: http://redis.io/topics/sentinel
 [cluster]: http://redis.io/topics/cluster-spec
