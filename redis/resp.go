@@ -328,6 +328,33 @@ func (r *Resp) Int64() (int64, error) {
 	return 0, errNotInt
 }
 
+// Bool returns an bool representing the value of the Resp.
+// For a Resp equals to 0, "0" or error return false, otherwise true
+func (r *Resp) Bool() (bool, error) {
+	if r.Err != nil {
+		return false, r.Err
+	}
+
+	i, err := r.Int()
+	if err == nil {
+		if i == 0 {
+			return false, nil
+		}
+		return true, nil
+	}
+
+	s, err := r.Str()
+	if err == nil {
+		if s == "0" {
+			return false, nil
+		}
+
+		return true, nil
+	}
+
+	return false, errors.New("boolean value is not available for this reply type")
+}
+
 // Float64 returns a float64 representing the value of the Resp. Only valud for
 // a Resp of type Str which represents an actual float. If r.Err != nil that
 // will be returned
