@@ -118,9 +118,19 @@ func (p *Pool) Cmd(cmd string, args ...interface{}) *redis.Resp {
 	if err != nil {
 		return redis.NewResp(err)
 	}
-	defer p.Put(c)
 
-	return c.Cmd(cmd, args...)
+	var r = c.Cmd(cmd, args...)
+	if r.IsType(redis.IOErr) {
+		c, err = p.df(p.Network, p.Addr)
+		if err != nil {
+			return redis.NewResp(err)
+		}
+		r = c.Cmd(cmd, args...)
+	}
+
+	p.Put(c)
+
+	return r
 }
 
 // Empty removes and calls Close() on all the connections currently in the pool.
