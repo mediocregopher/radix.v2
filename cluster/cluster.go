@@ -41,10 +41,6 @@ var (
 	ErrBadCmdNoKey = errors.New("bad command, no key")
 )
 
-// DialFunc is a function which can be incorporated into Opts. Note that network
-// will always be "tcp" in Cluster.
-type DialFunc func(network, addr string) (*redis.Client, error)
-
 // Cluster wraps a Client and accounts for all redis cluster logic
 type Cluster struct {
 	o Opts
@@ -72,7 +68,10 @@ type Opts struct {
 
 	// Required. The address of a single node in the cluster
 	Addr string
-
+	
+	//Required. Redis Cluster AUTH
+	Auth string	
+	
 	// Read and write timeout which should be used on individual redis clients.
 	// Default is to not set the timeout and let the connection use it's
 	// default. This will be ignored if the Dialer field is set.
@@ -95,6 +94,10 @@ type Opts struct {
 	// for new connections. Defaults to using redis.DialTimeout if not set.
 	Dialer DialFunc
 }
+
+// DialFunc is a function which can be incorporated into Opts. Note that network
+// will always be "tcp" in Cluster.
+type DialFunc func(network string, o Opts) (*redis.Client, error)
 
 // New will perform the following steps to initialize:
 //
@@ -128,8 +131,20 @@ func NewWithOpts(o Opts) (*Cluster, error) {
 		o.ResetThrottle = 500 * time.Millisecond
 	}
 	if o.Dialer == nil {
-		o.Dialer = func(_, addr string) (*redis.Client, error) {
-			return redis.DialTimeout("tcp", addr, o.Timeout)
+		o.Dialer = func(_ string, o Opts) (*redis.Client, error) {
+			//return redis.DialTimeout("tcp", addr, o.Timeout)
+			client, err := redis.DialTimeout("tcp", o.Addr, o.Timeout)
+			if err != nil {
+				return nil, err
+			}
+			
+			if o.Auth != ""{
+				if err = client.Cmd("AUTH", o.Auth).Err; err != nil {
+					client.Close()
+					return nil, err
+				}
+			}
+			return client, nil
 		}
 	}
 
@@ -170,7 +185,7 @@ func (c *Cluster) newPool(addr string, clearThrottle bool) (clusterPool, error) 
 	}
 
 	df := func(network, addr string) (*redis.Client, error) {
-		return c.o.Dialer(network, addr)
+		return c.o.Dialer(network, c.o)
 	}
 	p, err := pool.NewCustom("tcp", addr, c.o.PoolSize, df)
 	if err != nil {
