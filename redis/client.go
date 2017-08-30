@@ -4,9 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
+	"strconv"
 	"time"
+)
+
+const (
+	maxBufferSize = 1 << 20 // 1 MB
 )
 
 // ErrPipelineEmpty is returned from PipeResp() to indicate that all commands
@@ -96,6 +102,121 @@ func (c *Client) Cmd(cmd string, args ...interface{}) *Resp {
 	return c.readResp(true)
 }
 
+type bulkStringReader struct {
+	r           io.Reader
+	ContentSize int
+	readSize    int // size user already read
+}
+
+func (b *bulkStringReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.readSize += n
+	return n, err
+}
+
+func (b *bulkStringReader) discardRemainder() error {
+	if b.r == nil {
+		return nil
+	}
+	sizeRemain := b.ContentSize - b.readSize + 2 // +2 for trailing \r\n
+	var buf []byte
+	for sizeRemain > 0 {
+		var n int
+		var err error
+		if sizeRemain >= maxBufferSize {
+			if buf == nil {
+				// allocates maxBufferSize at most
+				buf = make([]byte, maxBufferSize)
+			}
+			n, err = b.r.Read(buf)
+		} else {
+			buf = make([]byte, sizeRemain)
+			n, err = b.r.Read(buf)
+		}
+
+		if err != nil {
+			return err
+		}
+		sizeRemain -= n
+	}
+	return nil
+}
+
+func newBulkStringReader(conn io.Reader) (*bulkStringReader, error) {
+	buf := make([]byte, 1) // read protocol header byte by byte
+	n, err := conn.Read(buf)
+	if err != nil || n != 1 {
+		return nil, errParse
+	}
+	if buf[0] != bulkStrPrefix[0] {
+		return nil, errBadType
+	}
+	sizeBuf := make([]byte, 0)
+FOR:
+	for {
+		n, err = conn.Read(buf)
+		if err != nil || n != 1 {
+			return nil, errParse
+		}
+		switch buf[0] {
+		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			sizeBuf = append(sizeBuf, buf[0])
+		case delim[0]: // got '\r', continue to read '\n'
+			n, err = conn.Read(buf)
+			if err != nil || n != 1 || buf[0] != delim[1] {
+				return nil, errParse
+			}
+			break FOR
+		default:
+			return nil, errParse
+		}
+	}
+
+	size, err := strconv.Atoi(string(sizeBuf))
+	if err != nil {
+		return nil, errParse
+	}
+	if size < 0 {
+		// a "null bulk string" if size < 0
+		return nil, nil
+	}
+	return &bulkStringReader{
+		r:           conn,
+		ContentSize: size,
+		readSize:    0,
+	}, nil
+}
+
+// Suit for Redis commands return bulk strings, no buffer included
+// Redis bulk string supports value up to 512MB, use io.Reader would reduce
+// memory consumption and memory copy time
+func (c *Client) RawResponseCmd(read func(io.Reader) error,
+	cmd string, args ...interface{}) (readSize int, err error) {
+
+	err = c.writeRequest(request{cmd, args})
+	if err != nil {
+		return 0, err
+	}
+	r, err := newBulkStringReader(c.conn)
+	if err != nil {
+		return 0, err
+	}
+	if r == nil {
+		return 0, nil
+	}
+
+	limitedReader := io.LimitReader(r, int64(r.ContentSize))
+	err = read(limitedReader)
+	go func() {
+		clientError := r.discardRemainder()
+		if clientError != nil {
+			c.LastCritical = clientError
+			c.Close()
+		}
+	}()
+	return r.readSize, err
+}
+
 // PipeAppend adds the given call to the pipeline queue.
 // Use PipeResp() to read the response.
 func (c *Client) PipeAppend(cmd string, args ...interface{}) {
@@ -172,6 +293,25 @@ func (c *Client) readResp(strict bool) *Resp {
 	return r
 }
 
+type BulkStringWriter struct {
+	WriteFunc   func(io.Writer) error
+	ContentSize int64
+}
+
+func (b BulkStringWriter) write(w io.Writer) (written int64, err error) {
+	lengthStr := []byte(strconv.FormatInt(b.ContentSize, 10))
+
+	written, err = writeBytesHelper(w, bulkStrPrefix, written, err)
+	written, err = writeBytesHelper(w, lengthStr, written, err)
+	written, err = writeBytesHelper(w, delim, written, err)
+	if err != nil {
+		return
+	}
+	err = b.WriteFunc(w)
+	written, err = writeBytesHelper(w, delim, written, err)
+	return
+}
+
 func (c *Client) writeRequest(requests ...request) error {
 	if c.WriteTimeout != 0 {
 		c.conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
@@ -192,9 +332,22 @@ outer:
 		}
 
 		for _, arg := range requests[i].args {
-			_, err = writeTo(c.writeBuf, c.writeScratch, arg, true, true)
-			if err != nil {
-				break outer
+			switch a := arg.(type) {
+			case BulkStringWriter:
+				// flush buffer contents into socket first
+				if _, err = c.writeBuf.WriteTo(c.conn); err != nil {
+					break outer
+				}
+				c.writeBuf.Reset()
+
+				if n, err := a.write(c.conn); err != nil || n != a.ContentSize {
+					break outer
+				}
+			default:
+				_, err = writeTo(c.writeBuf, c.writeScratch, arg, true, true)
+				if err != nil {
+					break outer
+				}
 			}
 		}
 
