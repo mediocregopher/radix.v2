@@ -23,6 +23,8 @@ type Pool struct {
 	// whatever was passed into the New function. These should not be
 	// changed after the pool is initialized
 	Network, Addr string
+	capacity      int
+	running       int
 }
 
 // DialFunc is a function which can be passed into NewCustom
@@ -39,6 +41,7 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 		df:         df,
 		initDoneCh: make(chan bool),
 		stopCh:     make(chan bool),
+		capacity:   size,
 	}
 
 	if size < 1 {
@@ -105,6 +108,9 @@ func (p *Pool) Get() (*redis.Client, error) {
 	case conn := <-p.pool:
 		return conn, nil
 	default:
+		if p.running  p.capacity{
+
+		}
 		return p.df(p.Network, p.Addr)
 	}
 }
