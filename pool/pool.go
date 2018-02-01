@@ -106,12 +106,13 @@ func New(network, addr string, size int) (*Pool, error) {
 func (p *Pool) Get() (*redis.Client, error) {
 	select {
 	case conn := <-p.pool:
+		p.running ++
 		return conn, nil
 	default:
-		if p.running  p.capacity{
-
+		if p.capacity == 0 || p.running < p.capacity {
+			return p.df(p.Network, p.Addr)
 		}
-		return p.df(p.Network, p.Addr)
+		return <-p.pool, nil
 	}
 }
 
@@ -122,6 +123,7 @@ func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
 		select {
 		case p.pool <- conn:
+			p.running--
 		default:
 			conn.Close()
 		}
