@@ -23,8 +23,11 @@ type Pool struct {
 	// whatever was passed into the New function. These should not be
 	// changed after the pool is initialized
 	Network, Addr string
-	capacity      int
-	running       chan bool
+
+	// Maximum number of connections allocated by the pool in this pool instance
+	capacity int
+	// The number of active connections,queue for conns
+	running chan bool
 }
 
 // DialFunc is a function which can be passed into NewCustom
@@ -106,6 +109,12 @@ func New(network, addr string, size int) (*Pool, error) {
 // create a new one on the fly
 func (p *Pool) Get() (*redis.Client, error) {
 	select {
+	// Detect whether the pool is full and all connections are active,if not,
+	// return a connection,three are two ways to get a connections:
+	// 1.picking a idle connection from the pool;
+	// 2.generating a new connection by dialing to redis cluster.
+	// if this pool is full already,then it will wait util a active connection has been put into pool.
+	// By doing this,we can make sure there
 	case p.running <- true:
 		select {
 		case conn := <-p.pool:
@@ -114,16 +123,6 @@ func (p *Pool) Get() (*redis.Client, error) {
 			return p.df(p.Network, p.Addr)
 		}
 	default:
-		//if p.capacity == 0 || len(p.running) < p.capacity {
-		//	select {
-		//	case conn := <-p.pool:
-		//		p.running <- true
-		//		return conn, nil
-		//	default:
-		//		p.running <- true
-		//		return p.df(p.Network, p.Addr)
-		//	}
-		//}
 		p.running <- true
 		return <-p.pool, nil
 	}
