@@ -22,10 +22,10 @@ func TestPool(t *T) {
 		wg.Add(1)
 		go func() {
 			conn, err := pool.Get()
-			conns <- conn
 			assert.Nil(t, err)
 
 			assert.Nil(t, conn.Cmd("ECHO", "HI").Err)
+			conns <- conn
 
 			//pool.Put(conn)
 			wg.Done()
