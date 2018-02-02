@@ -4,6 +4,7 @@ import (
 	"sync"
 	. "testing"
 
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,14 +61,19 @@ func TestPut(t *T) {
 	pool, err := New("tcp", "localhost:6379", 10)
 	require.Nil(t, err)
 	<-pool.initDoneCh
-
-	conn, err := pool.Get()
-	require.Nil(t, err)
-	assert.Equal(t, 9, len(pool.pool))
-
+	var conns []*redis.Client
+	for i := 0; i < 10; i++ {
+		conn, err := pool.Get()
+		require.Nil(t, err)
+		conns = append(conns, conn)
+	}
+	assert.Equal(t, 0, len(pool.pool))
+	conn := conns[0]
 	conn.Close()
 	assert.NotNil(t, conn.Cmd("PING").Err)
-	pool.Put(conn)
+	for _, conn := range conns {
+		pool.Put(conn)
+	}
 
 	// Make sure that Put does not accept a connection which has had a critical
 	// network error
