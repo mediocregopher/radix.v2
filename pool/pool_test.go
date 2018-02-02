@@ -14,7 +14,10 @@ func TestPool(t *T) {
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
 	<-pool.initDoneCh
-	pool.stopCh <- true
+	pool.stopOnce.Do(func() {
+		pool.stopCh <- true
+		<-pool.stopCh
+	})
 
 	concurrent := 100
 	var wg sync.WaitGroup
