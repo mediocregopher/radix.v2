@@ -24,7 +24,7 @@ type Pool struct {
 	// changed after the pool is initialized
 	Network, Addr string
 	capacity      int
-	running       int
+	running       chan bool
 }
 
 // DialFunc is a function which can be passed into NewCustom
@@ -42,6 +42,7 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 		initDoneCh: make(chan bool),
 		stopCh:     make(chan bool),
 		capacity:   size,
+		running:    make(chan bool, size),
 	}
 
 	if size < 1 {
@@ -69,26 +70,26 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 		}
 	}()
 
-	mkConn := func() error {
-		client, err := df(network, addr)
-		if err == nil {
-			p.pool <- client
-		}
-		return err
-	}
+	//mkConn := func() error {
+	//	client, err := df(network, addr)
+	//	if err == nil {
+	//		p.pool <- client
+	//	}
+	//	return err
+	//}
 
 	// make one connection to make sure the redis instance is actually there
-	if err := mkConn(); err != nil {
-		return &p, err
-	}
+	//if err := mkConn(); err != nil {
+	//	return &p, err
+	//}
 
 	// make the rest of the connections in the background, if any fail it's fine
-	go func() {
-		for i := 0; i < size-1; i++ {
-			mkConn()
-		}
-		close(p.initDoneCh)
-	}()
+	//go func() {
+	//	for i := 0; i < size-1; i++ {
+	//		mkConn()
+	//	}
+	//	close(p.initDoneCh)
+	//}()
 
 	return &p, nil
 }
@@ -105,13 +106,26 @@ func New(network, addr string, size int) (*Pool, error) {
 // create a new one on the fly
 func (p *Pool) Get() (*redis.Client, error) {
 	select {
-	case conn := <-p.pool:
-		p.running ++
-		return conn, nil
-	default:
-		if p.capacity == 0 || p.running < p.capacity {
+	case p.running <- true:
+		select {
+		case conn := <-p.pool:
+			p.running <- true
+			return conn, nil
+		default:
 			return p.df(p.Network, p.Addr)
 		}
+	default:
+		//if p.capacity == 0 || len(p.running) < p.capacity {
+		//	select {
+		//	case conn := <-p.pool:
+		//		p.running <- true
+		//		return conn, nil
+		//	default:
+		//		p.running <- true
+		//		return p.df(p.Network, p.Addr)
+		//	}
+		//}
+		p.running <- true
 		return <-p.pool, nil
 	}
 }
@@ -122,8 +136,8 @@ func (p *Pool) Get() (*redis.Client, error) {
 func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
 		select {
-		case p.pool <- conn:
-			p.running--
+		case <-p.running:
+			p.pool <- conn
 		default:
 			conn.Close()
 		}
