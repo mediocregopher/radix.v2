@@ -48,6 +48,7 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 	if size < 1 {
 		return &p, nil
 	}
+	defer close(p.initDoneCh)
 
 	// set up a go-routine which will periodically ping connections in the pool.
 	// if the pool is idle every connection will be hit once every 10 seconds.
@@ -90,7 +91,6 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 	//	}
 	//	close(p.initDoneCh)
 	//}()
-
 	return &p, nil
 }
 
@@ -109,7 +109,6 @@ func (p *Pool) Get() (*redis.Client, error) {
 	case p.running <- true:
 		select {
 		case conn := <-p.pool:
-			p.running <- true
 			return conn, nil
 		default:
 			return p.df(p.Network, p.Addr)
