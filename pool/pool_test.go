@@ -10,29 +10,51 @@ import (
 )
 
 func TestPool(t *T) {
-	size := 10
+	size := 100
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
 	<-pool.initDoneCh
 
+	concurrent := 1000
 	var wg sync.WaitGroup
-	for i := 0; i < size*4; i++ {
+	conns := make(chan *redis.Client, concurrent)
+	for i := 0; i < concurrent; i++ {
 		wg.Add(1)
 		go func() {
-			for i := 0; i < 100; i++ {
-				conn, err := pool.Get()
-				assert.Nil(t, err)
+			conn, err := pool.Get()
+			conns <- conn
+			assert.Nil(t, err)
 
-				assert.Nil(t, conn.Cmd("ECHO", "HI").Err)
+			assert.Nil(t, conn.Cmd("ECHO", "HI").Err)
 
-				pool.Put(conn)
-			}
+			//pool.Put(conn)
 			wg.Done()
 		}()
 	}
+	flag := true
+	go func() {
+		run := true
+		for flag {
+			if assert.Equal(t, 0, len(pool.pool)) && assert.Equal(t, size, len(pool.running)) {
+				for run {
+					select {
+					case conn := <-conns:
+						pool.Put(conn)
+					default:
+						if len(conns) == 0 {
+							run = false
+						}
+					}
+				}
+			} else if assert.Equal(t, size, len(pool.pool)) && assert.Equal(t, 0, len(pool.running)) {
+				flag = false
+			}
+		}
+	}()
 	wg.Wait()
 
 	assert.Equal(t, size, len(pool.pool))
+	assert.Equal(t, 0, len(pool.running))
 
 	pool.Empty()
 	assert.Equal(t, 0, len(pool.pool))

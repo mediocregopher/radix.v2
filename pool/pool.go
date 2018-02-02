@@ -167,6 +167,7 @@ func (p *Pool) Empty() {
 		select {
 		case conn = <-p.pool:
 			conn.Close()
+		case <-p.running:
 		default:
 			return
 		}
