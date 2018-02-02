@@ -14,10 +14,10 @@ func TestPool(t *T) {
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
 	<-pool.initDoneCh
-	pool.Empty()
 
 	concurrent := 100
 	var wg sync.WaitGroup
+	done := make(chan bool, concurrent)
 	conns := make(chan *redis.Client, concurrent)
 	for i := 0; i < concurrent; i++ {
 		wg.Add(1)
@@ -29,12 +29,12 @@ func TestPool(t *T) {
 			conns <- conn
 
 			//pool.Put(conn)
+			done <- true
 			wg.Done()
 		}()
 	}
 	flag := true
 	run := true
-	exit := make(chan bool)
 	go func() {
 		for flag {
 			if assert.Equal(t, 0, len(pool.pool)) && assert.Equal(t, size, len(pool.running)) {
@@ -42,20 +42,18 @@ func TestPool(t *T) {
 					select {
 					case conn := <-conns:
 						pool.Put(conn)
-					case <-exit:
-						run = false
+					default:
+						if len(done) == concurrent {
+							run = false
+						}
 					}
 				}
 			}
 		}
 	}()
 	wg.Wait()
-	for {
-		if assert.Equal(t, size, len(pool.pool)) && assert.Equal(t, 0, len(pool.running)) {
-			flag = false
-			close(exit)
-			break
-		}
+	if !run {
+		flag = false
 	}
 	assert.Equal(t, size, len(pool.pool))
 	assert.Equal(t, 0, len(pool.running))
