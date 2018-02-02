@@ -114,7 +114,7 @@ func (p *Pool) Get() (*redis.Client, error) {
 	// 1.picking a idle connection from the pool;
 	// 2.generating a new connection by dialing to redis cluster.
 	// if this pool is full already,then it will wait util a active connection has been put into pool.
-	// By doing this,we can make sure there
+	// By doing this,we can make sure that there will be always a limited number of connections in pool.
 	case p.running <- true:
 		select {
 		case conn := <-p.pool:
