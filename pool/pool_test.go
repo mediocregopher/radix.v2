@@ -10,12 +10,12 @@ import (
 )
 
 func TestPool(t *T) {
-	size := 100
+	size := 10
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
 	<-pool.initDoneCh
 
-	concurrent := 1000
+	concurrent := 100
 	var wg sync.WaitGroup
 	conns := make(chan *redis.Client, concurrent)
 	for i := 0; i < concurrent; i++ {
