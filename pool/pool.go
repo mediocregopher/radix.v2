@@ -108,13 +108,13 @@ func New(network, addr string, size int) (*Pool, error) {
 // Get retrieves an available redis client. If there are none available it will
 // create a new one on the fly
 func (p *Pool) Get() (*redis.Client, error) {
-	select {
 	// Detect whether the pool is full and all connections are active,if not,
 	// return a connection,three are two ways to get a connections:
 	// 1.picking a idle connection from the pool;
 	// 2.generating a new connection by dialing to redis cluster.
 	// if this pool is full already,then it will wait util a active connection has been put into pool.
 	// By doing this,we can make sure that there will be always a limited number of connections in pool.
+	select {
 	case p.running <- true:
 		select {
 		case conn := <-p.pool:

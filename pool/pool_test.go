@@ -32,27 +32,30 @@ func TestPool(t *T) {
 		}()
 	}
 	flag := true
+	run := true
+	exit := make(chan bool)
 	go func() {
-		run := true
 		for flag {
 			if assert.Equal(t, 0, len(pool.pool)) && assert.Equal(t, size, len(pool.running)) {
 				for run {
 					select {
 					case conn := <-conns:
 						pool.Put(conn)
-					default:
-						if len(conns) == 0 {
-							run = false
-						}
+					case <-exit:
+						run = false
 					}
 				}
-			} else if assert.Equal(t, size, len(pool.pool)) && assert.Equal(t, 0, len(pool.running)) {
-				flag = false
 			}
 		}
 	}()
 	wg.Wait()
-
+	for {
+		if assert.Equal(t, size, len(pool.pool)) && assert.Equal(t, 0, len(pool.running)) {
+			flag = false
+			close(exit)
+			break
+		}
+	}
 	assert.Equal(t, size, len(pool.pool))
 	assert.Equal(t, 0, len(pool.running))
 
