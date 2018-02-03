@@ -15,9 +15,8 @@ type Pool struct {
 	pool chan *redis.Client
 	df   DialFunc
 
-	initDoneCh chan bool // used for tests
-	stopOnce   sync.Once
-	stopCh     chan bool
+	stopOnce sync.Once
+	stopCh   chan bool
 
 	// The network/address that the pool is connecting to. These are going to be
 	// whatever was passed into the New function. These should not be
@@ -38,20 +37,18 @@ type DialFunc func(network, addr string) (*redis.Client, error)
 // authentication for new connections.
 func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 	p := Pool{
-		Network:    network,
-		Addr:       addr,
-		pool:       make(chan *redis.Client, size),
-		df:         df,
-		initDoneCh: make(chan bool),
-		stopCh:     make(chan bool),
-		capacity:   size,
-		running:    make(chan bool, size),
+		Network:  network,
+		Addr:     addr,
+		pool:     make(chan *redis.Client, size),
+		df:       df,
+		stopCh:   make(chan bool),
+		capacity: size,
+		running:  make(chan bool, size),
 	}
 
 	if size < 1 {
 		return &p, nil
 	}
-	defer close(p.initDoneCh)
 
 	// set up a go-routine which will periodically ping connections in the pool.
 	// if the pool is idle every connection will be hit once every 10 seconds.
@@ -179,4 +176,9 @@ func (p *Pool) Empty() {
 // be creating new connections on the fly
 func (p *Pool) Avail() int {
 	return len(p.pool)
+}
+
+//Capacity returns the pool size
+func (p *Pool) Capacity() int {
+	return p.capacity
 }

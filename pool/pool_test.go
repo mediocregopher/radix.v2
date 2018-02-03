@@ -13,7 +13,6 @@ func TestPool(t *T) {
 	size := 10
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
-	<-pool.initDoneCh
 
 	concurrent := 100
 	var wg sync.WaitGroup
@@ -80,7 +79,6 @@ func TestCmd(t *T) {
 func TestPut(t *T) {
 	pool, err := New("tcp", "localhost:6379", 10)
 	require.Nil(t, err)
-	<-pool.initDoneCh
 	var conns []*redis.Client
 	for i := 0; i < 10; i++ {
 		conn, err := pool.Get()
