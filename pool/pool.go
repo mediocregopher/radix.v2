@@ -112,17 +112,31 @@ func (p *Pool) Get() (*redis.Client, error) {
 	// if this pool is full already,then it will wait util a active connection has been put into pool.
 	// By doing this,we can make sure that there will be always a limited number of connections in pool.
 	select {
-	case p.running <- true:
-		select {
-		case conn := <-p.pool:
-			return conn, nil
-		default:
-			return p.df(p.Network, p.Addr)
-		}
-	default:
+	case conn := <-p.pool:
 		p.running <- true
-		return <-p.pool, nil
+		return conn, nil
+	default:
+		select {
+		case p.running <- true:
+			return p.df(p.Network, p.Addr)
+		default:
+			p.running <- true
+			return <-p.pool, nil
+		}
 	}
+	// another implementation
+	// select {
+	// case p.running <- true:
+	// 	select {
+	// 	case conn := <-p.pool:
+	// 		return conn, nil
+	// 	default:
+	// 		return p.df(p.Network, p.Addr)
+	// 	}
+	// default:
+	// 	p.running <- true
+	// 	return <-p.pool, nil
+	// }
 }
 
 // Put returns a client back to the pool. If the pool is full the client is
@@ -131,11 +145,18 @@ func (p *Pool) Get() (*redis.Client, error) {
 func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
 		select {
-		case <-p.running:
-			p.pool <- conn
+		case p.pool <- conn:
+			<-p.running
 		default:
 			conn.Close()
 		}
+		// another implementation
+		// select {
+		// case <-p.running:
+		// 	p.pool <- conn
+		// default:
+		// 	conn.Close()
+		// }
 	}
 }
 
