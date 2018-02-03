@@ -34,6 +34,7 @@ func TestPool(t *T) {
 	}
 
 	for {
+		t.Logf("active connections number:%d", len(pool.running))
 		select {
 		case conn := <-conns:
 			pool.Put(conn)
