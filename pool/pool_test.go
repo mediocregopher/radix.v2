@@ -33,14 +33,18 @@ func TestPool(t *T) {
 		}()
 	}
 
+	t.Logf("active connections number:%d", len(pool.running))
 	for {
-		t.Logf("active connections number:%d", len(pool.running))
+		if activeNum := len(pool.running); activeNum < size {
+			t.Logf("active connections number:%d", activeNum)
+		}
 		select {
 		case conn := <-conns:
 			pool.Put(conn)
 		default:
 		}
-		if len(done) == concurrent {
+		if len(done) == concurrent && len(conns) == 0 {
+			t.Logf("active connections number:%d", len(pool.running))
 			break
 		}
 	}
