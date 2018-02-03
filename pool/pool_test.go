@@ -33,7 +33,7 @@ func TestPool(t *T) {
 		}()
 	}
 	for {
-		if assert.Equal(t, 0, len(pool.pool)) && assert.Equal(t, size, len(pool.running)) {
+		if assert.Equal(t, size, len(pool.running)) {
 			for {
 				select {
 				case conn := <-conns:
