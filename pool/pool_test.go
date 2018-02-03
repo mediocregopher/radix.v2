@@ -32,18 +32,12 @@ func TestPool(t *T) {
 			wg.Done()
 		}()
 	}
+
 	for {
-		if assert.Equal(t, size, len(pool.running)) {
-			for {
-				select {
-				case conn := <-conns:
-					pool.Put(conn)
-				default:
-				}
-				if len(done) == concurrent {
-					break
-				}
-			}
+		select {
+		case conn := <-conns:
+			pool.Put(conn)
+		default:
 		}
 		if len(done) == concurrent {
 			break
