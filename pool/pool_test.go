@@ -4,6 +4,7 @@ import (
 	"sync"
 	. "testing"
 
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,26 +13,44 @@ func TestPool(t *T) {
 	size := 10
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
-	<-pool.initDoneCh
 
+	concurrent := 100
 	var wg sync.WaitGroup
-	for i := 0; i < size*4; i++ {
+	done := make(chan bool, concurrent)
+	conns := make(chan *redis.Client, concurrent)
+	for i := 0; i < concurrent; i++ {
 		wg.Add(1)
 		go func() {
-			for i := 0; i < 100; i++ {
-				conn, err := pool.Get()
-				assert.Nil(t, err)
+			conn, err := pool.Get()
+			assert.Nil(t, err)
 
-				assert.Nil(t, conn.Cmd("ECHO", "HI").Err)
+			assert.Nil(t, conn.Cmd("ECHO", "HI").Err)
+			conns <- conn
 
-				pool.Put(conn)
-			}
+			//pool.Put(conn)
+			done <- true
 			wg.Done()
 		}()
 	}
-	wg.Wait()
 
+	t.Logf("active connections number:%d", len(pool.running))
+	for {
+		if activeNum := len(pool.running); activeNum < size {
+			t.Logf("active connections number:%d", activeNum)
+		}
+		select {
+		case conn := <-conns:
+			pool.Put(conn)
+		default:
+		}
+		if len(done) == concurrent && len(conns) == 0 {
+			t.Logf("active connections number:%d", len(pool.running))
+			break
+		}
+	}
+	wg.Wait()
 	assert.Equal(t, size, len(pool.pool))
+	assert.Equal(t, 0, len(pool.running))
 
 	pool.Empty()
 	assert.Equal(t, 0, len(pool.pool))
@@ -59,15 +78,19 @@ func TestCmd(t *T) {
 func TestPut(t *T) {
 	pool, err := New("tcp", "localhost:6379", 10)
 	require.Nil(t, err)
-	<-pool.initDoneCh
-
-	conn, err := pool.Get()
-	require.Nil(t, err)
-	assert.Equal(t, 9, len(pool.pool))
-
+	var conns []*redis.Client
+	for i := 0; i < 10; i++ {
+		conn, err := pool.Get()
+		require.Nil(t, err)
+		conns = append(conns, conn)
+	}
+	assert.Equal(t, 0, len(pool.pool))
+	conn := conns[0]
 	conn.Close()
 	assert.NotNil(t, conn.Cmd("PING").Err)
-	pool.Put(conn)
+	for _, conn := range conns {
+		pool.Put(conn)
+	}
 
 	// Make sure that Put does not accept a connection which has had a critical
 	// network error

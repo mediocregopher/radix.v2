@@ -15,14 +15,18 @@ type Pool struct {
 	pool chan *redis.Client
 	df   DialFunc
 
-	initDoneCh chan bool // used for tests
-	stopOnce   sync.Once
-	stopCh     chan bool
+	stopOnce sync.Once
+	stopCh   chan bool
 
 	// The network/address that the pool is connecting to. These are going to be
 	// whatever was passed into the New function. These should not be
 	// changed after the pool is initialized
 	Network, Addr string
+
+	// Maximum number of connections allocated by the pool in this pool instance
+	capacity int
+	// The number of active connections,queue for conns
+	running chan bool
 }
 
 // DialFunc is a function which can be passed into NewCustom
@@ -33,12 +37,13 @@ type DialFunc func(network, addr string) (*redis.Client, error)
 // authentication for new connections.
 func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 	p := Pool{
-		Network:    network,
-		Addr:       addr,
-		pool:       make(chan *redis.Client, size),
-		df:         df,
-		initDoneCh: make(chan bool),
-		stopCh:     make(chan bool),
+		Network:  network,
+		Addr:     addr,
+		pool:     make(chan *redis.Client, size),
+		df:       df,
+		stopCh:   make(chan bool),
+		capacity: size,
+		running:  make(chan bool, size),
 	}
 
 	if size < 1 {
@@ -66,27 +71,26 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 		}
 	}()
 
-	mkConn := func() error {
-		client, err := df(network, addr)
-		if err == nil {
-			p.pool <- client
-		}
-		return err
-	}
+	//mkConn := func() error {
+	//	client, err := df(network, addr)
+	//	if err == nil {
+	//		p.pool <- client
+	//	}
+	//	return err
+	//}
 
 	// make one connection to make sure the redis instance is actually there
-	if err := mkConn(); err != nil {
-		return &p, err
-	}
+	//if err := mkConn(); err != nil {
+	//	return &p, err
+	//}
 
 	// make the rest of the connections in the background, if any fail it's fine
-	go func() {
-		for i := 0; i < size-1; i++ {
-			mkConn()
-		}
-		close(p.initDoneCh)
-	}()
-
+	//go func() {
+	//	for i := 0; i < size-1; i++ {
+	//		mkConn()
+	//	}
+	//	close(p.initDoneCh)
+	//}()
 	return &p, nil
 }
 
@@ -101,11 +105,23 @@ func New(network, addr string, size int) (*Pool, error) {
 // Get retrieves an available redis client. If there are none available it will
 // create a new one on the fly
 func (p *Pool) Get() (*redis.Client, error) {
+	// Detect whether the pool is full and all connections are active,if not,
+	// return a connection,three are two ways to get a connections:
+	// 1.picking a idle connection from the pool;
+	// 2.generating a new connection by dialing to redis cluster.
+	// if this pool is full already,then it will wait util a active connection has been put into pool.
+	// By doing this,we can make sure that there will be always a limited number of connections in pool.
 	select {
-	case conn := <-p.pool:
-		return conn, nil
+	case p.running <- true:
+		select {
+		case conn := <-p.pool:
+			return conn, nil
+		default:
+			return p.df(p.Network, p.Addr)
+		}
 	default:
-		return p.df(p.Network, p.Addr)
+		p.running <- true
+		return <-p.pool, nil
 	}
 }
 
@@ -116,6 +132,7 @@ func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
 		select {
 		case p.pool <- conn:
+			<-p.running
 		default:
 			conn.Close()
 		}
@@ -147,6 +164,7 @@ func (p *Pool) Empty() {
 		select {
 		case conn = <-p.pool:
 			conn.Close()
+		case <-p.running:
 		default:
 			return
 		}
@@ -158,4 +176,9 @@ func (p *Pool) Empty() {
 // be creating new connections on the fly
 func (p *Pool) Avail() int {
 	return len(p.pool)
+}
+
+//Capacity returns the pool size
+func (p *Pool) Capacity() int {
+	return p.capacity
 }
