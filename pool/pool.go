@@ -134,8 +134,8 @@ func (p *Pool) Get() (*redis.Client, error) {
 func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
 		select {
-		case <-p.running:
-			p.pool <- conn
+		case p.pool <- conn:
+			<-p.running
 		default:
 			conn.Close()
 		}
