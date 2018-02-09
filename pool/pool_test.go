@@ -13,7 +13,6 @@ func TestPool(t *T) {
 	size := 10
 	pool, err := New("tcp", "localhost:6379", size)
 	require.Nil(t, err)
-	<-pool.initDoneCh
 
 	concurrent := 100
 	var wg sync.WaitGroup
@@ -33,20 +32,19 @@ func TestPool(t *T) {
 			wg.Done()
 		}()
 	}
+
+	t.Logf("active connections number:%d", len(pool.running))
 	for {
-		if assert.Equal(t, 0, len(pool.pool)) && assert.Equal(t, size, len(pool.running)) {
-			for {
-				select {
-				case conn := <-conns:
-					pool.Put(conn)
-				default:
-				}
-				if len(done) == concurrent {
-					break
-				}
-			}
+		if activeNum := len(pool.running); activeNum < size {
+			t.Logf("active connections number:%d", activeNum)
 		}
-		if len(done) == concurrent {
+		select {
+		case conn := <-conns:
+			pool.Put(conn)
+		default:
+		}
+		if len(done) == concurrent && len(conns) == 0 {
+			t.Logf("active connections number:%d", len(pool.running))
 			break
 		}
 	}
@@ -80,7 +78,6 @@ func TestCmd(t *T) {
 func TestPut(t *T) {
 	pool, err := New("tcp", "localhost:6379", 10)
 	require.Nil(t, err)
-	<-pool.initDoneCh
 	var conns []*redis.Client
 	for i := 0; i < 10; i++ {
 		conn, err := pool.Get()
