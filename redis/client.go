@@ -2,6 +2,7 @@ package redis
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -62,6 +63,11 @@ func DialTimeout(network, addr string, timeout time.Duration) (*Client, error) {
 		return nil, err
 	}
 
+	return dialTimeout(conn, network, addr, timeout)
+}
+
+// dialTimeout initializes a Client instance with a preexisting net.Conn
+func dialTimeout(conn net.Conn, network, addr string, timeout time.Duration) (*Client, error) {
 	completed := make([]*Resp, 0, 10)
 	return &Client{
 		conn:          conn,
@@ -80,6 +86,15 @@ func DialTimeout(network, addr string, timeout time.Duration) (*Client, error) {
 // Dial connects to the given Redis server.
 func Dial(network, addr string) (*Client, error) {
 	return DialTimeout(network, addr, time.Duration(0))
+}
+
+func DialTLS(network, addr string, tlsConfig tls.Config) (*Client, error) {
+	conn, err := tls.Dial(network, addr, &tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return dialTimeout(conn, network, addr, time.Duration(0))
 }
 
 // Close closes the connection.
