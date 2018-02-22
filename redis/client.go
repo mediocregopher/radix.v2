@@ -88,13 +88,15 @@ func Dial(network, addr string) (*Client, error) {
 	return DialTimeout(network, addr, time.Duration(0))
 }
 
-func DialTLS(network, addr string, tlsConfig tls.Config) (*Client, error) {
-	conn, err := tls.Dial(network, addr, &tlsConfig)
+// DialTLSTimeout connects to the given Redis server using a TLS connection.
+func DialTLSTimeout(network, addr string, tlsConfig tls.Config, timeout time.Duration) (*Client, error) {
+	d := net.Dialer{Timeout: timeout}
+	conn, err := tls.DialWithDialer(&d, network, addr, &tlsConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	return dialTimeout(conn, network, addr, time.Duration(0))
+	return dialTimeout(conn, network, addr, timeout)
 }
 
 // Close closes the connection.
