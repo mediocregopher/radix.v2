@@ -71,7 +71,12 @@ func DialTimeout(network, addr string, timeout time.Duration) (*Client, error) {
 	return client, nil
 }
 
-// NewClient initializes a Client instance with a preexisting net.Conn
+// NewClient initializes a Client instance with a preexisting net.Conn.
+//
+// For example, It can be used to open SSL connections to Redis servers:
+//
+//	conn, err := tls.DialWithDialer(&net.Dialer{}, "tcp", addr, &tls.Config{})
+//	client, err = radix.NewClient(conn)
 func NewClient(conn net.Conn) (*Client, error) {
 	addr := conn.RemoteAddr()
 	completed := make([]*Resp, 0, 10)
