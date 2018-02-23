@@ -2,7 +2,6 @@ package redis
 
 import (
 	"bytes"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -63,40 +62,34 @@ func DialTimeout(network, addr string, timeout time.Duration) (*Client, error) {
 		return nil, err
 	}
 
-	return dialTimeout(conn, network, addr, timeout)
+	client, err := NewClient(conn)
+	if err != nil {
+		return nil, err
+	}
+	client.ReadTimeout = timeout
+	client.WriteTimeout = timeout
+	return client, nil
 }
 
-// dialTimeout initializes a Client instance with a preexisting net.Conn
-func dialTimeout(conn net.Conn, network, addr string, timeout time.Duration) (*Client, error) {
+// NewClient initializes a Client instance with a preexisting net.Conn
+func NewClient(conn net.Conn) (*Client, error) {
+	addr := conn.RemoteAddr()
 	completed := make([]*Resp, 0, 10)
 	return &Client{
 		conn:          conn,
 		respReader:    NewRespReader(conn),
-		ReadTimeout:   timeout,
-		WriteTimeout:  timeout,
 		writeScratch:  make([]byte, 0, 128),
 		writeBuf:      bytes.NewBuffer(make([]byte, 0, 128)),
 		completed:     completed,
 		completedHead: completed,
-		Network:       network,
-		Addr:          addr,
+		Network:       addr.Network(),
+		Addr:          addr.String(),
 	}, nil
 }
 
 // Dial connects to the given Redis server.
 func Dial(network, addr string) (*Client, error) {
 	return DialTimeout(network, addr, time.Duration(0))
-}
-
-// DialTLSTimeout connects to the given Redis server using a TLS connection.
-func DialTLSTimeout(network, addr string, tlsConfig tls.Config, timeout time.Duration) (*Client, error) {
-	d := net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(&d, network, addr, &tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return dialTimeout(conn, network, addr, timeout)
 }
 
 // Close closes the connection.
