@@ -6,9 +6,9 @@ branches:
 
 language: go
 go:
-  - 1.4
-  - 1.5
-  - 1.6
+  - "1.8"
+  - "1.9"
+  - "1.10"
 
 # getting redis-trib working requires ruby 2.2 or greater
 rvm:
