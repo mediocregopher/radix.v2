@@ -195,7 +195,7 @@ func (c *Cluster) spin() {
 // is set. If the given pool couldn't be used a connection from a random pool
 // will (attempt) to be returned
 func (c *Cluster) getConn(key, addr string) (*redis.Client, error) {
-	respCh := make(chan clusterPool)
+	respCh := make(chan clusterPool, 1)
 	c.callCh <- func(c *Cluster) {
 		if key != "" {
 			addr = keyToAddr(key, &c.mapping)
@@ -219,7 +219,7 @@ func (c *Cluster) getConn(key, addr string) (*redis.Client, error) {
 // Put putss the connection back in its pool. To be used alongside any of the
 // Get* methods once use of the redis.Client is done
 func (c *Cluster) Put(conn *redis.Client) {
-	respCh := make(chan clusterPool)
+	respCh := make(chan clusterPool, 1)
 	c.callCh <- func(c *Cluster) {
 		respCh <- c.pools[conn.Addr]
 	}
@@ -246,7 +246,7 @@ func (c *Cluster) getRandomPoolInner() clusterPool {
 // the same time and it will only actually occur once (subsequent clients will
 // have nil returned immediately).
 func (c *Cluster) Reset() error {
-	respCh := make(chan error)
+	respCh := make(chan error, 1)
 	c.callCh <- func(c *Cluster) {
 		respCh <- c.resetInner()
 	}
@@ -555,7 +555,7 @@ func (c *Cluster) GetEvery() (map[string]*redis.Client, error) {
 		m   map[string]*redis.Client
 		err error
 	}
-	respCh := make(chan resp)
+	respCh := make(chan resp, 1)
 	c.callCh <- func(c *Cluster) {
 		m := map[string]*redis.Client{}
 		for addr, p := range c.pools {
@@ -580,7 +580,7 @@ func (c *Cluster) GetEvery() (map[string]*redis.Client, error) {
 // calling Avail on that instance's Pool instance. See pool.Avail for specifics
 // on what Avail means.
 func (c *Cluster) GetEveryAvail() map[string]int {
-	respCh := make(chan map[string]int)
+	respCh := make(chan map[string]int, 1)
 	c.callCh <- func(c *Cluster) {
 		m := map[string]int{}
 		for addr, p := range c.pools {
@@ -594,7 +594,7 @@ func (c *Cluster) GetEveryAvail() map[string]int {
 // GetAddrForKey returns the address which would be used to handle the given key
 // in the cluster.
 func (c *Cluster) GetAddrForKey(key string) string {
-	respCh := make(chan string)
+	respCh := make(chan string, 1)
 	c.callCh <- func(c *Cluster) {
 		respCh <- keyToAddr(key, &c.mapping)
 	}
