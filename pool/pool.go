@@ -1,7 +1,7 @@
 package pool
 
 import (
-	"sync"
+	"errors"
 	"time"
 
 	"github.com/mediocregopher/radix.v2/redis"
@@ -16,7 +16,6 @@ type Pool struct {
 	df   DialFunc
 
 	initDoneCh chan bool // used for tests
-	stopOnce   sync.Once
 	stopCh     chan bool
 
 	// The network/address that the pool is connecting to. These are going to be
@@ -58,7 +57,6 @@ func NewCustom(network, addr string, size int, df DialFunc) (*Pool, error) {
 		for {
 			select {
 			case <-p.stopCh:
-				close(p.stopCh)
 				return
 			case <-tick.C:
 				p.Cmd("PING")
@@ -104,16 +102,26 @@ func (p *Pool) Get() (*redis.Client, error) {
 	select {
 	case conn := <-p.pool:
 		return conn, nil
+	case <-p.stopCh:
+		return nil, errors.New("pool emptied")
 	default:
 		return p.df(p.Network, p.Addr)
 	}
 }
 
-// Put returns a client back to the pool. If the pool is full the client is
+// Put returns a client back to the pool. If the pools are full the client is
 // closed instead. If the client is already closed (due to connection failure or
 // what-have-you) it will not be put back in the pool
 func (p *Pool) Put(conn *redis.Client) {
 	if conn.LastCritical == nil {
+		// check to see if we've been shutdown and immediately close the connection
+		select {
+		case <-p.stopCh:
+			conn.Close()
+			return
+		default:
+		}
+
 		select {
 		case p.pool <- conn:
 		default:
@@ -136,12 +144,16 @@ func (p *Pool) Cmd(cmd string, args ...interface{}) *redis.Resp {
 
 // Empty removes and calls Close() on all the connections currently in the pool.
 // Assuming there are no other connections waiting to be Put back this method
-// effectively closes and cleans up the pool.
+// effectively closes and cleans up the pool. The pool cannot be used after Empty
+// is called.
 func (p *Pool) Empty() {
-	p.stopOnce.Do(func() {
-		p.stopCh <- true
-		<-p.stopCh
-	})
+	// check to see if stopCh is already closed, and if not, close it
+	select {
+	case <-p.stopCh:
+	default:
+		close(p.stopCh)
+	}
+
 	var conn *redis.Client
 	for {
 		select {

@@ -35,6 +35,10 @@ func TestPool(t *T) {
 
 	pool.Empty()
 	assert.Equal(t, 0, len(pool.pool))
+
+	c, err := pool.Get()
+	assert.Nil(t, c)
+	assert.Error(t, err)
 }
 
 func TestCmd(t *T) {
@@ -72,4 +76,11 @@ func TestPut(t *T) {
 	// Make sure that Put does not accept a connection which has had a critical
 	// network error
 	assert.Equal(t, 9, len(pool.pool))
+
+	// Make sure an emptied pool doesn't get connections added later
+	conn, err = pool.Get()
+	require.Nil(t, err)
+	pool.Empty()
+	pool.Put(conn)
+	assert.Equal(t, 0, len(pool.pool))
 }
