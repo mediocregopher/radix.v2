@@ -1,8 +1,8 @@
 package cluster
 
 import (
-	"github.com/mediocregopher/radix.v2/pool"
-	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/beiping96/radix.v2/pool"
+	"github.com/beiping96/radix.v2/redis"
 )
 
 // clusterPool wraps the normal pool fairly transparently. The major change
