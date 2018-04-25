@@ -6,7 +6,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/beiping96/radix.v2/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

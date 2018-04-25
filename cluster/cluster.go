@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mediocregopher/radix.v2/pool"
-	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/beiping96/radix.v2/pool"
+	"github.com/beiping96/radix.v2/redis"
 )
 
 const maxResetCount = 5
