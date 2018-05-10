@@ -121,7 +121,7 @@ func TestCmdMiss(t *T) {
 	assert.Nil(t, err)
 
 	args := []interface{}{key}
-	r := cluster.clientCmd(client, "GET", args, false, nil, false)
+	r := cluster.clientCmd(client, "GET", args, false, nil, 0)
 	s, err := r.Str()
 	assert.Nil(t, err)
 	assert.Equal(t, "baz", s)
