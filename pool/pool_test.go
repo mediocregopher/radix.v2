@@ -192,6 +192,54 @@ func TestLimitedPool(t *T) {
 	assert.Equal(t, 0, pool.Avail())
 }
 
+func TestGetTimeoutPool(t *T) {
+	size := 1
+	pool, err := NewCustom("tcp", "localhost:6379", size, redis.Dial,
+		CreateLimit(1, 5*time.Second),
+		GetTimeout(time.Second),
+	)
+	require.Nil(t, err)
+	<-pool.initDoneCh
+
+	assert.Equal(t, size, len(pool.limited))
+
+	clients := []*redis.Client{}
+	for i := 0; i < size; i++ {
+		c, err := pool.Get()
+		require.NoError(t, err)
+		clients = append(clients, c)
+	}
+	assert.Equal(t, 0, len(pool.pool))
+	assert.Equal(t, 0, len(pool.reservePool))
+	assert.Equal(t, size, len(pool.limited))
+	assert.Equal(t, 0, pool.Avail())
+
+	for i := 0; i < size; i++ {
+		c, err := pool.Get()
+		require.NoError(t, err)
+		clients = append(clients, c)
+	}
+	assert.Equal(t, 0, len(pool.pool))
+	assert.Equal(t, 0, len(pool.reservePool))
+	assert.Equal(t, 0, len(pool.limited))
+	assert.Equal(t, 0, pool.Avail())
+
+	// now try to get a client and it should timeout
+	c, err := pool.Get()
+	assert.Nil(t, c)
+	assert.Equal(t, ErrGetTimeout, err)
+
+	// close whatever is left
+	for i := 1; i < len(clients); i++ {
+		clients[i].Close()
+	}
+
+	pool.Empty()
+	assert.Equal(t, 0, len(pool.pool))
+	assert.Equal(t, 0, len(pool.reservePool))
+	assert.Equal(t, 0, pool.Avail())
+}
+
 func TestCmd(t *T) {
 	size := 10
 	pool, err := New("tcp", "localhost:6379", 10)

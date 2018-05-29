@@ -7,6 +7,13 @@ import (
 	"github.com/mediocregopher/radix.v2/redis"
 )
 
+var (
+
+	// ErrGetTimeout is returned from Get when a GetTimeout was specified and
+	// that time was hit.
+	ErrGetTimeout = errors.New("get timed out")
+)
+
 // Pool is a connection pool for redis Clients. It will create a small pool of
 // initial connections, and if more connections are needed they will be
 // created on demand. If a connection is Put back and the pool is full it will
@@ -199,6 +206,12 @@ func (p *Pool) Get() (*redis.Client, error) {
 	case <-p.stopCh:
 		return nil, errors.New("pool emptied")
 	default:
+		var timeoutCh <-chan time.Time
+		if p.po.getTimeout > 0 {
+			timer := time.NewTimer(p.po.getTimeout)
+			defer timer.Stop()
+			timeoutCh = timer.C
+		}
 		// we need a separate select here since it's indeterminate which case go
 		// will select and we want to always prefer pools over creating a new
 		// connection
@@ -207,6 +220,8 @@ func (p *Pool) Get() (*redis.Client, error) {
 			return conn, nil
 		case conn := <-p.reservePool:
 			return conn, nil
+		case <-timeoutCh:
+			return nil, ErrGetTimeout
 		case <-p.limited:
 			return p.df(p.Network, p.Addr)
 		}

@@ -8,6 +8,7 @@ type opts struct {
 	createLimitInterval   time.Duration
 	overflowDrainInterval time.Duration
 	overflowSize          int
+	getTimeout            time.Duration
 }
 
 // Opt is an optional behavior which can be applied to the NewCustom
@@ -49,6 +50,20 @@ func OnFullBuffer(size int, drainInterval time.Duration) Opt {
 	return func(po *opts) {
 		po.overflowSize = size
 		po.overflowDrainInterval = drainInterval
+	}
+}
+
+// GetTimeout effects the Pool's behavior when it is empty. The effect is to
+// limit the amount of time Get spends waiting for a new connection before
+// timing out and returning ErrGetTimeout.
+//
+// The timeout does not include the time it takes to dial the new connection
+// since we have no way of cancelling the dial once it has begun.
+//
+// The default is 0, which disables the timeout.
+func GetTimeout(timeout time.Duration) Opt {
+	return func(po *opts) {
+		po.getTimeout = timeout
 	}
 }
 
