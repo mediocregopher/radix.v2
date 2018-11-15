@@ -1,13 +1,15 @@
-# Radix
-
-[![Build Status](https://travis-ci.org/mediocregopher/radix.v2.svg)](https://travis-ci.org/mediocregopher/radix.v2)
-[![GoDoc](https://godoc.org/github.com/mediocregopher/radix.v2?status.svg)](https://godoc.org/github.com/mediocregopher/radix.v2)
+# Radix.v2 (deprecated)
 
 This package is officially **deprecated** in favor of the [new
 version](https://github.com/mediocregopher/radix), which does everything v2 does
 but is faster, cleaner, and more flexible.
 
+-----
+
 # Old README
+
+[![Build Status](https://travis-ci.org/mediocregopher/radix.v2.svg)](https://travis-ci.org/mediocregopher/radix.v2)
+[![GoDoc](https://godoc.org/github.com/mediocregopher/radix.v2?status.svg)](https://godoc.org/github.com/mediocregopher/radix.v2)
 
 Radix is a minimalistic [Redis][redis] client for Go. It is broken up into
 small, single-purpose packages for ease of use.
