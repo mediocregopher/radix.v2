@@ -96,12 +96,15 @@ func NewCustom(network, addr string, size int, df DialFunc, os ...Opt) (*Pool, e
 		doEvery(po.pingInterval, func() {
 			// instead of using Cmd/Get, which might make a new connection,
 			// we only check from the pool
-			select {
-			case conn := <-p.pool:
-				// we don't care if PING errors since Put will handle that
-				conn.Cmd("PING")
-				p.Put(conn)
-			default:
+			//ping for every socket
+			for i:=0;i<initSize;i++{
+				select {
+				case conn := <-p.pool:
+					// we don't care if PING errors since Put will handle that
+					conn.Cmd("PING")
+					p.Put(conn)
+				default:
+				}
 			}
 		})
 	}
