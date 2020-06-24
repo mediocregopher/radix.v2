@@ -347,6 +347,9 @@ func (r *Resp) Float64() (float64, error) {
 	if r.Err != nil {
 		return 0, r.Err
 	}
+	if r.IsType(Nil) {
+		return 0, ErrRespNil
+	}
 	if b, ok := r.val.([]byte); ok {
 		f, err := strconv.ParseFloat(string(b), 64)
 		if err != nil {
